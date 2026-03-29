@@ -1,8 +1,5 @@
-%% LABORATORIO 1: PAM y PCM - VERSIÓN CORREGIDA (Lista para ejecutar)
-% Alumno: Benjamín
-% Esta versión corrige índices, límites de pulsos, cuantización vectorizada,
-% normalización FFT, clipping seguro y calcula MSE vs N.
-clc; clear; close all;
+%% LABORATORIO 1: PAM y PCM
+% Alumno: Benjamín Arango, Yhean Fernandez, Jeremias Olivares
 
 %% --- Parámetros configurables ---
 A = 1;                 % Amplitud
