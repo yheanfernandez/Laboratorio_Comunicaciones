@@ -1,0 +1,156 @@
+%% LABORATORIO 1: PAM y PCM - VERSIÓN CORREGIDA (Lista para ejecutar)
+% Alumno: Benjamín
+% Esta versión corrige índices, límites de pulsos, cuantización vectorizada,
+% normalización FFT, clipping seguro y calcula MSE vs N.
+clc; clear; close all;
+
+%% --- Parámetros configurables ---
+A = 1;                 % Amplitud
+fc = 1000;             % Frecuencia señal (Hz)
+fs_sim = 100000;       % Frecuencia de simulación (Hz) -> resolución
+Ts_sim = 1/fs_sim;
+t_end = 0.005;         % Tiempo total (s)
+t = 0:Ts_sim:t_end;
+m_t = A * sin(2*pi*fc*t);   % señal de información
+
+% Parámetros de muestreo PAM/PCM
+fs = 8000;             % frecuencia de muestreo (Hz)
+Ts = 1/fs;
+d = 0.3;               % ciclo de trabajo (tau/Ts)
+tau = d * Ts;
+
+% Valores de N para comparar MSE
+Ns = 2:8;              % bits a evaluar
+
+%% --- Índices de muestreo seguros ---
+step = max(1, round(Ts / Ts_sim));        % muestras de simulación por Ts
+muestras_idx = 1:step:length(t);
+muestras_idx = muestras_idx(muestras_idx <= length(t)); % protección final
+t_muestras = t(muestras_idx);
+muestras = m_t(muestras_idx);
+
+%% --- PAM Natural (tren de pulsos) ---
+% Usar rem < tau para evitar superposiciones por límite inclusive
+s_t = (rem(t, Ts) < tau);
+pam_natural = m_t .* double(s_t);
+
+%% --- PAM Instantánea (flat-top) ---
+pam_inst = zeros(size(t));
+for i = 1:length(muestras_idx)
+    idx = muestras_idx(i);
+    t0 = t(idx);
+    rango = (t >= t0) & (t < t0 + tau);   % límite superior estricto
+    pam_inst(rango) = m_t(idx);
+end
+
+%% --- FFT (normalizada) ---
+nfft = 2^nextpow2(length(t));
+f = (0:nfft-1) * (fs_sim / nfft);
+half = 1:floor(nfft/2);
+
+M_f = abs(fft(m_t, nfft)) / nfft;
+PAMN_f = abs(fft(pam_natural, nfft)) / nfft;
+PAMI_f = abs(fft(pam_inst, nfft)) / nfft;
+
+%% --- Cuantización / PCM: función vectorizada ---
+v_min = -A; v_max = A;
+
+% Función local inline (lambda) no puede contener bucles largos, usar local:
+% implementada abajo como función local 'quantize_uniform'
+
+% Elegir N por defecto para gráficos
+N_default = 4;
+[m_cuantizada_t, muestras_cuantizadas, error_cuant] = quantize_uniform(...
+    muestras, t, t_muestras, Ts, v_min, v_max, N_default);
+
+% Calcular MSE vs N
+MSEs = zeros(size(Ns));
+for k = 1:length(Ns)
+    [~, ~, err_k] = quantize_uniform(muestras, t, t_muestras, Ts, v_min, v_max, Ns(k));
+    MSEs(k) = mean(err_k.^2);
+end
+
+%% --- Gráficas en tiempo ---
+figure('Name','PAM y PCM - Tiempo','NumberTitle','off','Position',[100 100 900 800]);
+
+subplot(4,1,1);
+plot(t, m_t, 'k--','LineWidth',1); hold on;
+plot(t, pam_natural, 'b'); grid on;
+title('m(t) y PAM natural'); legend('m(t)','PAM natural');
+xlim([0 3*(1/fc)]); % mostrar pocos ciclos por claridad
+
+subplot(4,1,2);
+plot(t, m_t, 'k--','LineWidth',1); hold on;
+plot(t, pam_inst, 'r'); grid on;
+title('m(t) y PAM instantánea (flat-top)'); legend('m(t)','PAM instantánea');
+xlim([0 3*(1/fc)]);
+
+subplot(4,1,3);
+plot(t, m_t, 'k--','LineWidth',1); hold on;
+plot(t, m_cuantizada_t, 'm','LineWidth',1.2); grid on;
+title(['PCM: señal cuantizada (N = ', num2str(N_default),' bits)']);
+legend('m(t)','m_{cuantizada}(t)');
+xlim([0 3*(1/fc)]);
+
+subplot(4,1,4);
+stem(t_muestras, error_cuant, 'filled'); grid on;
+title('Error de cuantización por muestra'); xlabel('Tiempo (s)');
+xlim([0 3*(1/fc)]);
+
+%% --- Gráfica espectral (porción positiva) ---
+figure('Name','Espectros - Positiva','NumberTitle','off','Position',[250 200 900 500]);
+plot(f(half), M_f(half), 'k--','LineWidth',1); hold on;
+plot(f(half), PAMN_f(half), 'b');
+plot(f(half), PAMI_f(half), 'r');
+xlim([0 3*fs]); grid on;
+legend('m(t)','PAM natural','PAM instantánea');
+xlabel('Frecuencia (Hz)');
+title('Magnitud FFT (porción positiva)');
+
+%% --- MSE vs N ---
+figure('Name','MSE vs N','NumberTitle','off','Position',[350 300 500 350]);
+plot(Ns, MSEs, '-o','LineWidth',1.5); grid on;
+xlabel('N (bits)'); ylabel('MSE');
+title('MSE de cuantización vs N');
+fprintf('MSE para N = %s : %s\n', mat2str(Ns), mat2str(MSEs,6));
+
+%% --- Impresiones rapidas ---
+disp('Observaciones:');
+disp('- Usar rem(t,Ts) < tau evita solapamientos de borde en pulsos.');
+disp('- La cuantización está centrada en intervalos uniformes y se realiza con clipping seguro.');
+disp('- MSE disminuye al aumentar N (mayor resolución).');
+
+%% --- Función local: cuantización uniforme vectorizada ---
+function [m_cuantizada_t, muestras_cuantizadas, error_cuant] = quantize_uniform(muestras, t, t_muestras, Ts, v_min, v_max, N)
+    % entradas:
+    %  muestras      : vector de valores muestreados
+    %  t             : vector de tiempo de simulación
+    %  t_muestras    : tiempos de cada muestra (correspondiente)
+    %  Ts            : periodo de muestreo
+    %  v_min, v_max  : rango de cuantización
+    %  N             : número de bits
+    %
+    % salidas:
+    %  m_cuantizada_t       : señal cuantizada en tiempo (mantiene valor por Ts)
+    %  muestras_cuantizadas : niveles asignados por muestra
+    %  error_cuant          : error por muestra (muestra - nivel)
+
+    L = 2^N;
+    paso = (v_max - v_min) / L;
+    % codebook: niveles centrados
+    codebook = v_min + (0.5:1:(L-0.5)) * paso;
+    % clipear muestras al rango [v_min, v_max-eps] para evitar índice L+1 si exacto v_max
+    muestras_clipped = min(max(muestras, v_min), v_max - eps);
+    % índices de intervalo
+    idx_q = floor((muestras_clipped - v_min) / paso) + 1;
+    idx_q = min(max(idx_q,1),L);
+    muestras_cuantizadas = codebook(idx_q);
+    % construir señal cuantizada en tiempo (mantener cada muestra por Ts)
+    m_cuantizada_t = zeros(size(t));
+    for k = 1:length(t_muestras)
+        t0 = t_muestras(k);
+        rango = (t >= t0) & (t < t0 + Ts);
+        m_cuantizada_t(rango) = muestras_cuantizadas(k);
+    end
+    error_cuant = muestras - muestras_cuantizadas;
+end
