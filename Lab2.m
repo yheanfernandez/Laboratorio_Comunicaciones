@@ -111,12 +111,9 @@ for i = 1:length(alphas)
     
     % 6. Generación del Diagrama de Ojo
     % Usamos sps (1 símbolo), 1 (periodo) y 0 (CERO offset)
-    % El '0' le dice a MATLAB: "pon el pico en el centro".
     hFig = eyediagram(senal_valida(1:2000), sps, 1, 0);
     
     % --- Ajuste del eje X de 0 a 1 ---
-    % MATLAB internamente grafica de -0.5 a 0.5. Al sumar 0.5, 
-    % el pico central se mueve al 0.5 y los cruces quedan en 0 y 1.
     lineas = findobj(hFig, 'Type', 'line');
     for k = 1:length(lineas)
         lineas(k).XData = lineas(k).XData + 0.5;
