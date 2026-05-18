@@ -1,6 +1,6 @@
 % Yhean Fernandez
-& Jeremias Olivares
-&Benjamin Arango
+% Jeremias Olivares
+% Benjamin Arango
 
 % =========================================================================
 % Laboratorio Presencial: Modulación FSK
