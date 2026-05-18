@@ -1,3 +1,7 @@
+% Yhean Fernandez
+& Jeremias Olivares
+&Benjamin Arango
+
 % =========================================================================
 % Laboratorio Presencial: Modulación FSK
 % Transformada de Fourier de la envolvente compleja g(t)
